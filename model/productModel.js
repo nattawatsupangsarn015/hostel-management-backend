@@ -6,8 +6,10 @@ var product = new Schema({
    detail: String,
    name: String,
    price: Number,
-   latitude: String,
-   longitude: String,
+   location: {
+      lat: Number,
+      lng: Number
+   },
    allotment: Number
 }, { versionKey: false });
 
