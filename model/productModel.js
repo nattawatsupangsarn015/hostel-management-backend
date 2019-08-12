@@ -4,7 +4,6 @@ var Schema = mongoose.Schema;
 var product = new Schema({
    name: String,
    detail: String,
-   name: String,
    price: Number,
    location: {
       lat: Number,

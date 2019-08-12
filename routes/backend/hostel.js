@@ -8,6 +8,7 @@ const crypto = require('crypto')
 var mongoose = require('mongoose');
 var userModel = require('../../model/userModel.js');
 var productModel = require('../../model/productModel.js');
+var bookingModel = require('../../model/bookingModel.js');
 var db = mongoose.connection;
 
 //------ auth management ------//
@@ -37,7 +38,9 @@ const jwtAuth = new JwtStrategy(jwtOptions, (user, done) => {
 });
 
 passport.use(jwtAuth);
+
 const requireJWTAuth = passport.authenticate("jwt",{session:false});
+
 const loginMiddleWare = (req, res, next) => {
     mongoose.connect('mongodb://localhost:27017/hotel', {"useNewUrlParser": true})
 
@@ -50,7 +53,12 @@ const loginMiddleWare = (req, res, next) => {
             var checkData = _.find(result, {username: req.body.username, password: crypto.createHash('md5').update(password).digest("hex")});
             if(checkData){
                 const payload = {
-                    username: req.body.username,
+                    username: checkData.username,
+                    userId: checkData._id,
+                    name: checkData.name,
+                    lastName: checkData.lastName,
+                    birthDay: checkData.birthDay,
+                    email: checkData.email,
                     exp: new Date().getTime() + 86400000
                 };
                 res.status(200).send(jwt.encode(payload, SECRET));
@@ -156,8 +164,11 @@ route.put('/product/:id', (req, res) => {
         name: req.body.name,
         detail: req.body.detail,
         price: req.body.price,
-        latitude: req.body.latitude,
-        longitude: req.body.longitude
+        location: {
+            lat: req.body.latitude,
+            lng: req.body.longitude
+        },
+        allotment: req.body.allotment
     }
 
     db.on('error', console.error.bind(console, 'connection error:'));
@@ -176,7 +187,20 @@ route.get('/product/search/:id', (req, res) => {
 
     db.on('error', console.error.bind(console, 'connection error:'));
     db.once('open', function() {
-        productModel.find({name : {$regex: new RegExp("^" + req.params.id.toLowerCase()),$options:'i' }}, (err, result) => {
+        productModel.find({$or:[
+            {
+                name : {
+                    $exists:true,
+                    $regex: new RegExp("^" + req.params.id.toLowerCase()),$options:'i' 
+                }
+            },
+            {
+                detail: {
+                    $exists:true,
+                    $regex: new RegExp("^" + req.params.id.toLowerCase()),$options:'i' 
+                }
+            }
+        ]}, (err, result) => {
             if (err) return console.error(err);
             sendData = result
             if(sendData.length !== 0) {
@@ -189,7 +213,7 @@ route.get('/product/search/:id', (req, res) => {
     });
 })
 
-route.delete('/product/:id', (req, res, next) => {
+route.delete('/product/:id', (req, res) => {
     mongoose.connect('mongodb://localhost:27017/hotel', {"useNewUrlParser": true})
 
     db.on('error', console.error.bind(console, 'connection error:'));
@@ -200,5 +224,68 @@ route.delete('/product/:id', (req, res, next) => {
         });
     });
 })
+
+route.get('/booking/:id', requireJWTAuth, (req, res) => {
+    mongoose.connect('mongodb://localhost:27017/hotel', {"useNewUrlParser": true})
+
+    var sendData
+
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+        bookingModel.find({userId : req.params.id}, (err, result) => {
+            if (err) return console.error(err);
+            sendData = result
+            if(sendData.length !== 0) {
+                res.send(sendData)
+            }
+            else {
+                res.status(404).send('Data not found.')
+            }
+        });
+    });
+})
+
+route.post('/booking', (req, res, next) => {
+    mongoose.connect('mongodb://localhost:27017/hotel', {"useNewUrlParser": true})
+
+    var booking = new bookingModel({
+        bookingNumber: 'HM' + new Date().getTime(),
+        dateTravel: req.body.dateTravel,
+        userId: req.body.userId,
+        productId: req.body.productId,
+        amount: req.body.amount,
+        price: req.body.price,
+        name: req.body.name,
+        lastName: req.body.lastName,
+        birthDay: req.body.birthDay,
+        email: req.body.email
+    }) 
+
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', () => {
+        bookingModel.create(booking, (err, result) => {
+            if(err) return console.log(err)
+        });
+
+        next()
+        res.status(201).send('Create booking success.')
+    });
+}, updateAllotment)
+
+async function updateAllotment(req, res) {
+    mongoose.connect('mongodb://localhost:27017/hotel', {"useNewUrlParser": true})
+
+    var product = {
+        allotment: req.body.allotment
+    }
+
+    db.on('error', console.error.bind(console, 'connection error:'));
+    await db.once('open', () => {
+        productModel.findByIdAndUpdate({_id: req.body.productId}, product, (err, result) =>{
+            if(err) res.send(err)
+        })
+    })
+
+}
 
 module.exports = route;
